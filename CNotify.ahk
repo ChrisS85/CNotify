@@ -1,9 +1,15 @@
 SetBatchlines, -1
 SetWinDelay, -1
+Progress := new CNotification.CProgress(0, 100, 0)
 Loop 4
 {
-	window := new CNotificationWindow("Test rhabarberbabarababarenbarbierbierbar", A_Index ": <A ID=""bla"">test</A>", A_AHKPath, 5000 * A_Index, new Delegate("Handler"))
+	window := new CNotificationWindow("Test rhabarberbabarababarenbarbierbierbar", A_Index ": <A ID=""bla"">test</A>", A_AHKPath, 5000 * A_Index, new Delegate("Handler"), A_Index = 4 ? Progress : "")
 	Sleep 100
+}
+Loop 100
+{
+	window.Progress := A_Index
+	Sleep 30
 }
 return
 handler(URLorID = "", Index = "")
@@ -16,9 +22,51 @@ Class CNotification
 {
 	static Windows := Array()
 	;Default style used for a notification window. An instance can be supplied to the constructor to use a specific style
-	Class CStyle
+	Class Style
 	{
+		static BackgroundColor := "333333"
 
+		static Radius := 9
+		static Transparency := "220"
+		Class Title
+		{
+			static FontSize := 8
+			static FontWeight := 625
+			static FontColor := "DDDDDD"
+			static Font := "Arial"
+		}
+		Class Text
+		{
+			static FontSize := 8
+			static FontColor := "DDDDDD"
+			static FontWeight := 550
+			static Font := "Arial"
+		}
+
+		Class Border
+		{
+			static Color := 0x000000
+			static Width := 2
+			static Radius := 13
+			static Transpacency := 105
+		}
+
+		static ImageWidth := 32
+		static ImageHeight := 32
+
+		Class Progress
+		{
+			;Width := 350
+			static Color := "Default"
+			static BackgroundColor := "Default"
+		}
+		__new()
+		{
+			this.Title := new this.Title()
+			this.Text := new this.Text()
+			this.Border := new this.Border()
+			this.Progress := new this.Progress()
+		}
 	}
 
 	;Class used to describe a progress bar in a notification window. Can be passed to the constructor to show a progress bar
@@ -27,7 +75,6 @@ Class CNotification
 		Min := 0
 		Max := 100
 		Value := 0
-		Text := 0
 		__new(Min, Max, Value)
 		{
 			this.Min := Min
@@ -141,25 +188,38 @@ Class CNotificationWindow Extends CGUI
 		this.OnClick.Handler := OnClick
 		this.AlwaysOnTop := true
 		this.Border := false
+		this.Caption := false
+		if(!Style)
+			Style := CNotification.Style
 
-		this.AddControl("Text", "txtTitle", "", Title)
-		if(Progress)
-		{
-			this.AddControl("Progress", "prgProgress", "Range" Progress.Min "-" Progress.Max, Progress.Value)
-			if(Progress.Text)
-				this.AddControl("Text", "txtProgress", "", Progress.Text)
-		}
+		this.WindowColor := Style.BackgroundColor
+		this.Transparent := Style.Transparency
 		if(Icon)
-		{
-			this.AddControl("Picture", "icoIcon", "", Icon)
-		}
-		this.AddControl("Link", "lnkText", Icon ? "x+10" : "", Text)
+			this.icoIcon := this.AddControl("Picture", "icoIcon", "w" Style.ImageWidth " h" Style.ImageHeight, Icon)
+
+		;Revert to basic functions here so the font can be set before the control is added
+		Gui, % this.GUINum ":Font", % "s" Style.Title.FontSize " w" Style.Title.FontWeight " c" Style.Title.FontColor, % Style.Title.Font
+		this.txtTitle := this.AddControl("Text", "txtTitle", Icon ? "x+5" : "", Title)
+
+		if(Progress)
+			this.prgProgress := this.AddControl("Progress", "prgProgress", "y+5 Range" Progress.Min "-" Progress.Max, Progress.Value)
+
+		Gui, % this.GUINum ":Font", % "s" Style.Text.FontSize " w" Style.Text.FontWeight " c" Style.Text.FontColor, % Style.Text.Font
+		this.lnkText := this.AddControl("Link", "lnkText", "y+5", Text)
 
 		this.Position := CNotification.RegisterNotificationWindow(this)
 		this.Show()
 
+		;Calculate width of progress bar
+		w1 := this.lnkText.Width
+		w2 := this.txtTitle.Width
+		width := w1 > w2 ? w1 : w2
+		this.prgProgress.Width := width
+
 		;Background text control to detect clicks on the GUI
-		this.AddControl("Text", "txtBackground", "x0 y0 w" this.Width " h" this.Height " BackgroundTrans")
+		this.txtBackground := this.AddControl("Text", "txtBackground", "x0 y0 w" this.Width " h" this.Height " BackgroundTrans")
+		if(Style.Radius)
+			this.Region := "0-0 w" this.WindowWidth " h" this.WindowHeight " R" Style.Radius "-" Style.Radius
 
 		;Register handlers for all controls
 		for index, control in this.Controls
@@ -175,5 +235,16 @@ Class CNotificationWindow Extends CGUI
 	{
 		this.OnClick.(URLOrID, Index)
 		this.Close()
+	}
+	__Set(Key, Value)
+	{
+		if(Key = "Progress" && this.HasKey("prgProgress"))
+			this.prgProgress.Value := Value
+		else if(Key = "Text")
+			this.lnkText.Text := Value
+		else
+			Ignore := true
+		if(!Ignore)
+			return Value
 	}
 }
