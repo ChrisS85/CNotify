@@ -21,6 +21,7 @@ handler(URLorID = "", Index = "")
 Class CNotification
 {
 	static Windows := Array()
+	static pToken :=  Gdip_Startup() ; Start gdi+
 	;Default style used for a notification window. An instance can be supplied to the constructor to use a specific style
 	Class Style
 	{
@@ -45,7 +46,7 @@ Class CNotification
 
 		Class Border
 		{
-			static Color := 0x000000
+			static Color := 0xAA000000
 			static Width := 2
 			static Radius := 13
 			static Transpacency := 105
@@ -194,19 +195,28 @@ Class CNotificationWindow Extends CGUI
 
 		this.WindowColor := Style.BackgroundColor
 		this.Transparent := Style.Transparency
+
+		;Background picture control to detect clicks on the GUI and render the border
+		this.icoBackground := this.AddControl("Picture", "icoBackground", "x0 y0 w0 h0 0xE")
+		
+		;Offset from border
+		Offset := Style.Border.Width > Style.Radius ? Style.Border.Width : Style.Radius
 		if(Icon)
-			this.icoIcon := this.AddControl("Picture", "icoIcon", "w" Style.ImageWidth " h" Style.ImageHeight, Icon)
+			this.icoIcon := this.AddControl("Picture", "icoIcon", "x" Offset " y" Offset " w" Style.ImageWidth " h" Style.ImageHeight, Icon)
 
 		;Revert to basic functions here so the font can be set before the control is added
 		Gui, % this.GUINum ":Font", % "s" Style.Title.FontSize " w" Style.Title.FontWeight " c" Style.Title.FontColor, % Style.Title.Font
 		this.txtTitle := this.AddControl("Text", "txtTitle", Icon ? "x+5" : "", Title)
 
+		;Progress control
 		if(Progress)
 			this.prgProgress := this.AddControl("Progress", "prgProgress", "y+5 Range" Progress.Min "-" Progress.Max, Progress.Value)
 
+		;Notification text is a link control
 		Gui, % this.GUINum ":Font", % "s" Style.Text.FontSize " w" Style.Text.FontWeight " c" Style.Text.FontColor, % Style.Text.Font
 		this.lnkText := this.AddControl("Link", "lnkText", "y+5", Text)
 
+		;Register and show window
 		this.Position := CNotification.RegisterNotificationWindow(this)
 		this.Show()
 
@@ -216,11 +226,40 @@ Class CNotificationWindow Extends CGUI
 		width := w1 > w2 ? w1 : w2
 		this.prgProgress.Width := width
 
-		;Background text control to detect clicks on the GUI
-		this.txtBackground := this.AddControl("Text", "txtBackground", "x0 y0 w" this.Width " h" this.Height " BackgroundTrans")
-		if(Style.Radius)
-			this.Region := "0-0 w" this.WindowWidth " h" this.WindowHeight " R" Style.Radius "-" Style.Radius
+		;Resize background picture control to fit whole window
+		this.icoBackground.Size := {Width : this.Width, Height : this.Height}
+		
 
+		;Draw border:
+		
+		;Create background brush and pen for border
+		pBrushBack := Gdip_BrushCreateSolid(0x00000000)
+		pPen := Gdip_CreatePen(Style.Border.Color, Style.Border.Width)
+		
+		;Create bitmap and graphics
+		pBitmap := Gdip_CreateBitmap(this.icoBackground.Width, this.icoBackground.Height)
+		G := Gdip_GraphicsFromImage(pBitmap)
+		
+		;Draw background and border, taking into account the pen width
+		Gdip_FillRectangle(G, pBrushBack, 0, 0, this.icoBackground.Width, this.icoBackground.Height)
+		Gdip_DrawRoundedRectangle(G, pPen, Style.Border.Width/2, Style.Border.Width/2, this.icoBackground.Width - Style.Border.Width * 2, this.icoBackground.Height - Style.Border.Width * 2, Style.Radius)
+		
+		;Create HBITMAP and set it to the picture control
+		hBitmap := Gdip_CreateHBITMAPFromBitmap(pBitmap)
+		SetImage(this.icoBackground.hwnd, hBitmap)
+		
+		;Cleanup
+		Gdip_DeletePen(pPen)
+		Gdip_DeleteBrush(pBrushBack)
+		Gdip_DeleteGraphics(G)
+		Gdip_DisposeImage(pBitmap)
+		DeleteObject(hBitmap)
+
+
+		;Set region for rounded windows
+		if(Style.Radius)
+			this.Region := "0-0 w" this.WindowWidth " h" this.WindowHeight " R" Style.Radius * 2 "-" Style.Radius * 2
+		
 		;Register handlers for all controls
 		for index, control in this.Controls
 			if(control.Type != "Progress" && control.Type != "Link")
